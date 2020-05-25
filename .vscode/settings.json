@@ -1,0 +1,6 @@
+{
+    "ros.distro": "melodic",
+    "python.autoComplete.extraPaths": [
+        "/opt/ros/melodic/lib/python3.8/site-packages"
+    ]
+}

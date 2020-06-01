@@ -12,7 +12,7 @@ Serial::~Serial(){
   close(this->fd);
 }
 
-int Serial::serialSetInterfaceAttribs(int speed, int parity) {
+int Serial::setInterfaceAttribs(int speed, int parity) {
   struct termios tty;
   memset (&tty, 0, sizeof tty);
   if (tcgetattr (fd, &tty) != 0) {
@@ -50,7 +50,7 @@ int Serial::serialSetInterfaceAttribs(int speed, int parity) {
   return 0;
 }
 
-void Serial::serialSetBlocking(bool should_block) {
+void Serial::setBlocking(bool should_block) {
   struct termios tty;
   memset (&tty, 0, sizeof tty);
   if (tcgetattr (fd, &tty) != 0) {
@@ -65,19 +65,68 @@ void Serial::serialSetBlocking(bool should_block) {
     fprintf (stderr,"error %d setting term attributes\n", errno);
 }
 
-void Serial::serialRead(uint8_t * buf, size_t size){
-  uint8_t b;
+void Serial::writeData(uint8_t * buff, size_t size){
+  ssize_t writtenBytes = 0;
+  ssize_t tmp = 0;
+  while(writtenBytes < size){
 
-  for(int i = 0 ;i<size;i++){
-    if(read(fd,&b,sizeof(uint8_t))<=0) {
-      perror("Read Error!");
+    tmp = write(this->fd,buff,size);
+    if(tmp < 0){
+      perror("Write error");
       exit(1);
       break;
     }
-    *(buf+i)=b;
+    else  writtenBytes += tmp;
   }
 }
 
 bool Serial::isOpen(){
   return this->fd>0;
+}
+
+void Serial::spin(){
+  uint8_t b;
+  int i;
+  for(i = 0; i<RX_BUFFER_SIZE; i++){
+
+    int status = read(this->fd, &b, 1);
+    if( status == 0 )
+      break; //NO MORE DATA TO BE READED
+    else if( status < 0)
+      break; //ERROR
+    else { //READED 1 BYTE
+      rxBuff[rxBufferTail]=b;
+      rxBufferTail++;
+      if(rxBufferTail==RX_BUFFER_SIZE)
+        rxBufferTail=0;
+    }
+  }
+  std::cout<<i<<" bytes received"<<std::endl;
+}
+
+ssize_t Serial::dataAvaiable(){
+  std::cout<<"HEAD "<<(int)this->rxBufferHead<<" TAIL "<<(int)this->rxBufferTail<<std::endl;
+  if(this->rxBufferTail >= this->rxBufferHead)
+    return this->rxBufferTail - this->rxBufferHead;
+  else {
+    return RX_BUFFER_SIZE - this->rxBufferHead + this->rxBufferTail;
+  }
+}
+
+void Serial::readData(uint8_t * buf, size_t size){
+  /*
+  if(size > this->dataAvaiable())
+    return;
+
+  for(int i = 0;i<size;i++){
+    *(buf+i)=rxBuff[(rxBufferHead+i)%RX_BUFFER_SIZE];
+  }
+
+  this->rxBufferHead+=size;
+  this->rxBufferHead%=RX_BUFFER_SIZE;
+  */
+ 
+ for(int i = 0;i<size;i++)
+  read(this->fd,buf+i,1);
+ 
 }

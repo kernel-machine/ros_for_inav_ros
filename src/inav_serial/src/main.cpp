@@ -5,18 +5,20 @@
 #include "std_msgs/Int32.h"
 #include "custom_messages/Axis.h"
 #include "string.h"
+#include "CRC.h"
 
 Serial * serial = NULL;
 #define RECV_DATA
 
 typedef struct{
-    uint16_t connected;
-    int16_t pitch;
-    int16_t roll;
-    int16_t yaw;
-    int16_t throttle;
-    int16_t checksum;
-    uint32_t roba;
+    uint8_t header;
+    uint8_t checksum; 
+    int16_t pitch;     
+    int16_t roll;     
+    int16_t yaw;     
+    int16_t throttle; 
+    uint8_t connected;
+    uint8_t padding;
 } rosAxis_t;
 
 #ifdef RECV_DATA
@@ -54,16 +56,26 @@ void callback(custom_messages::Axis msg)
     axis.roll = (msg.roll/20)+1500;
     axis.yaw = (msg.yaw/20)+1500;
     axis.throttle = (msg.throttle/20)+1500;
-    axis.checksum =  axis.pitch ^ axis.roll ^ axis.yaw ^ axis.throttle;
+
+    uint8_t * axisPtr = (uint8_t*)&axis;
+    axis.checksum =  CRC::compute(axisPtr+2,sizeof(uint16_t)*4);
     axis.connected = msg.isConnected;
+    axis.header=PACKET_HEADER;
     if(msg.isConnected==0)
         ROS_INFO("DISCONNECTED");
 
+    
     //ROS_INFO("SENDED %d %d %d %d %u %d",axis.pitch, axis.roll, axis.throttle, axis.yaw, axis.connected, axis.checksum);   
     
     uint8_t * tmp = (uint8_t*)&axis;
-    serial->writeData(tmp,sizeof(rosAxis_t));
-    
+    serial->writeData(tmp,sizeof(rosAxis_t));   
+}
+
+
+void signalHandler(int sig){
+    std::cout<<"signal "<<sig<<std::endl;
+    delete serial;
+    exit(1);
 }
 
 
@@ -101,36 +113,27 @@ int main(int argc, char** argv){
     #ifdef RECV_DATA
     rosReceivedAxis_t recvData = {0};
     const size_t recv_data_size = sizeof(rosReceivedAxis_t);
+    std::cout<<"SIZE "<<sizeof(rosAxis_t)<<std::endl;
     #endif
 
     ros::Rate r(100);
 
+    serial->spin();
+
     while(ros::ok()){
 
         ros::spinOnce();
-
-        /*
-        std::cout<<"spinn...";
-        //serial->spin();
-        std::cout<<"...ning"<<std::endl;
-        */
-
-
-        //std::cout<<"DATA AVAIABLE -> "<<serial->dataAvaiable()<<" <--"<<std::endl;
         
         #ifdef RECV_DATA
-        
-        //if(serial->dataAvaiable( ) > recv_data_size){
+        if(serial->dataAvaiable( ) > recv_data_size){
             serial->readData((uint8_t*)&recvData,recv_data_size);
             ROS_INFO("RECV p:%d r:%d t:%d y:%d tot:%u bad:%u ena:%u",
             recvData.pitch, recvData.roll, recvData.throttle, recvData.yaw,
             recvData.totalPacket, recvData.badPacket, recvData.rosModeEnable);
-        //}       
+        }       
         #endif
-        
-        
 
-        //r.sleep();
+        r.sleep();
 
     }
     delete serial;

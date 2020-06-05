@@ -1,0 +1,4 @@
+<launch>
+	<node pkg="joystick_reveiver" type="joystick_reveiver_node" name="joystick_reveiver_node" output="screen"/>
+	<node pkg="inav_serial" type="inav_serial_node" name="inav_serial_node" output="screen"/>
+</launch>

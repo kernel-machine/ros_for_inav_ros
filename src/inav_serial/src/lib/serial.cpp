@@ -6,10 +6,14 @@ Serial::Serial(const char* name) {
     fprintf (stderr,"error %d opening serial, fd %d\n", errno, fd);
   }
   this->fd = fd;
+  this->b = new Buffer(RX_BUFF_SIZE);
+  this->atomic_buffer = new std::atomic<Buffer*>(this->b);
 }
 
 Serial::~Serial(){
   close(this->fd);
+  delete serialReadThread;
+  delete b;
 }
 
 int Serial::setInterfaceAttribs(int speed, int parity) {
@@ -69,8 +73,7 @@ void Serial::writeData(uint8_t * buff, size_t size){
   ssize_t writtenBytes = 0;
   ssize_t tmp = 0;
   while(writtenBytes < size){
-
-    tmp = write(this->fd,buff,size);
+    tmp = write(this->fd, buff+writtenBytes, size-writtenBytes);
     if(tmp < 0){
       perror("Write error");
       exit(1);
@@ -84,49 +87,37 @@ bool Serial::isOpen(){
   return this->fd>0;
 }
 
-void Serial::spin(){
-  uint8_t b;
-  int i;
-  for(i = 0; i<RX_BUFFER_SIZE; i++){
 
-    int status = read(this->fd, &b, 1);
-    if( status == 0 )
-      break; //NO MORE DATA TO BE READED
-    else if( status < 0)
-      break; //ERROR
-    else { //READED 1 BYTE
-      rxBuff[rxBufferTail]=b;
-      rxBufferTail++;
-      if(rxBufferTail==RX_BUFFER_SIZE)
-        rxBufferTail=0;
-    }
-  }
-  std::cout<<i<<" bytes received"<<std::endl;
+void Serial::spin(){
+  this->serialReadThread 
+    = new std::thread(&(Serial::serialReadPolling), this->fd, this->atomic_buffer);
 }
 
+
 ssize_t Serial::dataAvaiable(){
-  std::cout<<"HEAD "<<(int)this->rxBufferHead<<" TAIL "<<(int)this->rxBufferTail<<std::endl;
-  if(this->rxBufferTail >= this->rxBufferHead)
-    return this->rxBufferTail - this->rxBufferHead;
-  else {
-    return RX_BUFFER_SIZE - this->rxBufferHead + this->rxBufferTail;
-  }
+  return atomic_buffer->load()->getBytesCount();
 }
 
 void Serial::readData(uint8_t * buf, size_t size){
-  /*
-  if(size > this->dataAvaiable())
-    return;
-
-  for(int i = 0;i<size;i++){
-    *(buf+i)=rxBuff[(rxBufferHead+i)%RX_BUFFER_SIZE];
-  }
-
-  this->rxBufferHead+=size;
-  this->rxBufferHead%=RX_BUFFER_SIZE;
-  */
- 
- for(int i = 0;i<size;i++)
-  read(this->fd,buf+i,1);
- 
+  atomic_buffer->load()->popBytes(buf,size);
 }
+
+void Serial::serialReadPolling(int fd,std::atomic<Buffer*> * atomic_buffer){
+  /*
+    This must be executed on a second thread that poll on the serial
+  */
+  uint8_t data;
+  int readRis = 0;
+  while (true)
+  {
+    readRis = read(fd,&data,1);
+    if(readRis>0){
+      //ATOMIC SECTION
+      //append localBuff to mainBuff
+      atomic_buffer->load()->pushBytes(&data,1);
+    }
+    else if(readRis==-1 || readRis==0)break;
+  }
+  
+}
+

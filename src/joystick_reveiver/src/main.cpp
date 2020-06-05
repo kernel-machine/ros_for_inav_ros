@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <string>
+#include <stdexcept>
 
 Socket * s = NULL;
 custom_messages::Axis msg;
@@ -22,7 +23,6 @@ void callback(const uint8_t * data, size_t size){
     size_t delimiter_pos = js.find("|");
 
     while(delimiter_pos!=std::string::npos){
-        
         js = js.substr(delimiter_pos+1);
 
         const size_t p_pos = js.find("p:");
@@ -40,6 +40,8 @@ void callback(const uint8_t * data, size_t size){
         const std::string t_str = js.substr(t_pos,y_pos);
         const std::string y_str = js.substr(y_pos);
 
+        try {
+
         const int p_level = std::stoi(p_str.substr(2));
         const int r_level = std::stoi(r_str.substr(2));
         const int t_level = std::stoi(t_str.substr(2));
@@ -52,6 +54,11 @@ void callback(const uint8_t * data, size_t size){
         msg.yaw=y_level;
         msg.isConnected=1;
         pub.publish(msg);
+
+        }
+        catch(std::invalid_argument e){
+            std::cerr<<"ERROR ON STOI PARSE"<<std::endl;
+        }
         
         delimiter_pos = js.find("|");
     }
@@ -91,8 +98,10 @@ int main(int argc, char** argv){
         s->setClientDisconnectedCallback(disconnectedCallback);
         s->setCallback(callback);
     }
-    else 
-        ROS_INFO("ERROR");
+    else {
+        ROS_INFO("ERROR, Serial port not opened");
+        return 0;
+    }
 
     //pub.publish(msg);
     ros::spin();
